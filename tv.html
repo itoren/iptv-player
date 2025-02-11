@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IPTV Player</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    .channel-item {
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body class="bg-dark">
+  <div class="container">
+    <br>
+    <h1 class="text-light"><i class="bi bi-tv"></i> IPTV Player</h1>
+    <div class="row">
+      <div class="col-md-3">
+        <div class="list-group" id="channel-list">
+        </div>
+      </div>
+      <div class="col-md-9">
+        <div class="card">
+          <div class="card-body">
+            <div id="player-container">
+              <center>Выберите канал из списка</center>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const channelListElement = document.getElementById('channel-list');
+      const playerContainer = document.getElementById('player-container');
+      let hls = null;
+      // Функция для загрузки и обработки плейлиста
+      async function loadM3U(url) {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const data = await response.text();
+          const channels = parseM3U(data);
+          renderChannels(channels);
+        } catch (error) {
+          console.error('Ошибка загрузки или парсинга M3U файла:', error);
+          alert('Ошибка загрузки или парсинга M3U файла. Подробнее в консоли.');
+        }
+      }
+      // Функция парсинга m3u
+      function parseM3U(data) {
+        const lines = data.split('\n');
+        const channels = [];
+        let currentChannel = null;
+        for (const line of lines) {
+          if (line.startsWith('#EXTINF:')) {
+            currentChannel = parseExtInf(line);
+          } else if (line.startsWith('http') && currentChannel) {
+            currentChannel.url = line.trim();
+            channels.push(currentChannel);
+            currentChannel = null;
+          }
+        }
+        return channels;
+      }
+      // Функция парсинга #EXTINF
+      function parseExtInf(line) {
+        const regex = /#EXTINF:-1\s*(.*?),(.*)/;
+        const match = line.match(regex);
+        if (match && match[1] && match[2]) {
+          const attributesStr = match[1].trim();
+          const name = match[2].trim();
+          const attributes = {};
+          const attrRegex = /(\w+)=("([^"]*)"|'([^']*)'|([^'"]*\S))/g;
+          let attrMatch;
+          while ((attrMatch = attrRegex.exec(attributesStr)) !== null) {
+            const key = attrMatch[1];
+            let value = attrMatch[3] || attrMatch[4] || attrMatch[5];
+            attributes[key] = value;
+          }
+          return {...attributes,
+            name
+          };
+        }
+        return null;
+      }
+      // Функция отображения списка каналов
+      function renderChannels(channels) {
+        channelListElement.innerHTML = '';
+        channels.forEach(channel => {
+          const channelItem = document.createElement('a');
+          channelItem.href = '#';
+          channelItem.classList.add('list-group-item', 'list-group-item-action', 'channel-item');
+          channelItem.innerHTML = `
+                <img src="${channel.logo}" alt="${channel.name}" class="img-thumbnail rounded me-2" style="width: 25px; height: 25px">
+                ${channel.name}
+            `;
+          channelItem.addEventListener('click', () => {
+            playChannel(channel);
+          });
+          channelListElement.appendChild(channelItem);
+        });
+      }
+      // Запуск потока
+      function playChannel(channel) {
+        playerContainer.innerHTML = '';
+        const video = document.createElement('video');
+        video.controls = true;
+        video.classList.add('w-100');
+        playerContainer.appendChild(video);
+        if (Hls.isSupported()) {
+          if (hls) {
+            hls.destroy();
+          }
+          hls = new Hls();
+          hls.loadSource(channel.url);
+          hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            video.play();
+          });
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = channel.url;
+          video.addEventListener('loadedmetadata', () => {
+            video.play();
+          });
+        }
+      }
+      // Загрузка плейлиста при загрузке страницы
+      loadM3U('TV.m3u'); //Имя файла
+    });
+  </script>
+</body>
+
+</html>
